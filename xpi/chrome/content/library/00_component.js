@@ -24,11 +24,8 @@ var IURI                 = Ci.nsIURI;
 var IInputStream         = Ci.nsIInputStream;
 var ICache               = Ci.nsICache;
 var ISelectionListener   = Ci.nsISelectionListener;
-// var IAccessNode          = Ci.nsIAccessNode;
 
 
-// Firefox 2で全てのページがガベージされなくなるメモリーリークが発生したため停止中
-// const AccessibilityService = getService('/accessibilityService;1', Ci.nsIAccessibilityService);
 var ExtensionManager    = getService('/extensions/manager;1', Ci.nsIExtensionManager);
 var StorageService      = getService('/storage/service;1', Ci.mozIStorageService);
 var DirectoryService    = getService('/file/directory_service;1', Ci.nsIProperties);
@@ -58,7 +55,9 @@ var ClipboardHelper     = getService('/widget/clipboardhelper;1', Ci.nsIClipboar
 var NavHistoryService   = getService('/browser/nav-history-service;1', Ci.nsINavHistoryService);
 var FaviconService      = getService('/browser/favicon-service;1', Ci.nsIFaviconService);
 var StyleSheetService   = getService('/content/style-sheet-service;1', Ci.nsIStyleSheetService);
-
+var FuelApplication     = getService('/fuel/application;1', Ci.fuelIApplication);
+var PrefService         = getService('/preferences-service;1');
+var MIMEService         = getService('/mime;1', Ci.nsIMIMEService);
 
 var PrefBranch = 
 	createConstructor('/preferences;1', 'nsIPrefBranch');
@@ -92,7 +91,7 @@ var FileInputStream =
 
 var ConverterInputStream = 
 	createConstructor('/intl/converter-input-stream;1', 'nsIConverterInputStream', function(stream, charset, bufferSize){
-		this.init(stream, charset || 'UTF-8', bufferSize || 4096, ConverterInputStream.DEFAULT_REPLACEMENT_CHARACTER);
+		this.init(stream, charset || 'UTF-8', bufferSize || 8192, ConverterInputStream.DEFAULT_REPLACEMENT_CHARACTER);
 	});
 
 var MIMEInputStream = 
@@ -145,6 +144,13 @@ var FileOutputStream =
 		PR_SYNC : 0x40,
 		PR_EXCL : 0x80,
 	});
+
+var DocumentEncoder = function(document, mimeType, flags){
+	var encoder = Cc['@mozilla.org/layout/documentEncoder;1?type=' + mimeType].createInstance(Ci.nsIDocumentEncoder);
+	encoder.init(document, mimeType, flags);
+	return encoder;
+}
+update(DocumentEncoder, Ci.nsIDocumentEncoder);
 
 // ----[Utility]-------------------------------------------------
 function createMock(sample, proto){
@@ -304,16 +310,6 @@ notify.ICON_DOWNLOAD = 'chrome://mozapps/skin/downloads/downloadIcon.png';
 notify.ICON_INFO     = 'chrome://global/skin/console/bullet-question.png';
 notify.ICON_ERROR    = 'chrome://global/skin/console/bullet-error.png';
 notify.ICON_WORN     = 'chrome://global/skin/console/bullet-warning.png';
-
-/*
-function getElementByPosition(x, y){
-	return AccessibilityService.
-		getAccessibleFor(currentDocument()).
-		getChildAtPoint(x, y).
-		QueryInterface(IAccessNode).
-		DOMNode;
-}
-*/
 
 function convertFromUnplaceableHTML(str){
 	var arr = [];

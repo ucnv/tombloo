@@ -106,7 +106,7 @@ var QuickPostForm = {
 	show : function(ps, position, message){
 		openDialog(
 			'chrome://tombloo/content/quickPostForm.xul', 
-			'chrome,alwaysRaised=yes,resizable=yes,titlebar=no,dependent=yes', ps, position, message);
+			'chrome,alwaysRaised=yes,resizable=yes,dependent=yes,titlebar=no', ps, position, message);
 	},
 };
 
@@ -121,12 +121,12 @@ QuickPostForm.dialog = {
 };
 QuickPostForm.descriptionContextMenus = [
 	{
-		name : 'is.gd',
-		icon : models['is.gd'].ICON,
+		name : 'j.mp',
+		icon : models['j.mp'].ICON,
 		
-		execute : function(elmText){
-			shortenUrls(elmText.value, models['is.gd']).addCallback(function(value){
-				elmText.value = value;
+		execute : function(elmText, desc){
+			shortenUrls(desc.value, models['j.mp']).addCallback(function(value){
+				desc.value = value;
 			});
 		},
 	},
@@ -139,18 +139,23 @@ forEach({
 	'shortcutkey.quickPost.link' : function(e){
 		cancel(e);
 		
-		var win = e.currentTarget.content;
+		var win = getMostRecentWindow().content;
 		var doc = win.document;
-		win = win.wrappedJSObject || win;
 		
 		var ctx = update({
 			document  : doc,
 			window    : win,
 			title     : doc.title,
+			selection : ''+win.getSelection(),
+			target    : doc.documentElement,
 		}, win.location);
+		
+		var models = Tombloo.Service.check(ctx).filter(function(model){
+			return /^Link/.test(model.name);
+		});
 		Tombloo.Service.extractors.extract(
 			ctx, 
-			Tombloo.Service.extractors.Link
+			models[0]
 		).addCallback(function(ps){
 			QuickPostForm.show(ps);
 		});
@@ -158,9 +163,8 @@ forEach({
 	'shortcutkey.quickPost.regular' : function(e){
 		cancel(e);
 		
-		var win = e.currentTarget.content;
+		var win = wrappedObject(e.currentTarget.content);
 		var doc = win.document;
-		win = win.wrappedJSObject || win;
 		
 		QuickPostForm.show({
 			type    : 'regular',
@@ -172,8 +176,7 @@ forEach({
 	// 処理を行わなかった場合はtrueを返す
 	'shortcutkey.checkAndPost' : function(e){
 		var doc = e.originalTarget.ownerDocument;
-		var win = doc.defaultView;
-		win = win.wrappedJSObject || win;
+		var win = wrappedObject(doc.defaultView);
 		
 		// XULは処理しない
 		if(!doc.body)
@@ -244,19 +247,38 @@ connect(grobal, 'browser-load', function(e){
 	var doc = cwin.document;
 	
 	connectToBrowser(cwin);
-		
+	
+	var top = getPref('contextMenu.top');
 	var context;
 	var menuContext = doc.getElementById('contentAreaContextMenu');
 	var menuShare   = doc.getElementById('tombloo-menu-share');
 	var menuSelect  = doc.getElementById('tombloo-menu-select');
 	var menuAction  = doc.getElementById('tombloo-menu-action');
+	var separator = doc.createElement('menuseparator');
 	
 	menuShare.setAttribute('accesskey', getPref('accesskey.share'));
+	
+	if(top)
+		insertSiblingNodesAfter(menuAction.parentNode, separator);
 	
 	// Menu Editor拡張によって個別メニューのイベントを取得できなくなる現象を回避
 	menuContext.addEventListener('popupshowing', function(e){
 		if(e.eventPhase != Event.AT_TARGET || (context && context.target == cwin.gContextMenu.target))
 			return;
+		
+		if(!top){
+			// リンク上とそれ以外で表示されるメニューが異なる
+			// 常にブックマークの上あたりに挿入する
+			var insertPoint = cwin.document.getElementById('context-sep-open');
+			if(insertPoint.hidden)
+				insertPoint = cwin.document.getElementById('context-sep-stop');
+			
+			// 表示される逆順に移動する
+			insertSiblingNodesAfter(insertPoint, separator);
+			insertSiblingNodesAfter(insertPoint, menuAction.parentNode);
+			insertSiblingNodesAfter(insertPoint, menuSelect.parentNode);
+			insertSiblingNodesAfter(insertPoint, menuShare);
+		}
 		
 		var doc = wrappedObject(cwin.gContextMenu.target.ownerDocument);
 		var win = wrappedObject(doc.defaultView);
@@ -273,7 +295,6 @@ connect(grobal, 'browser-load', function(e){
 			return;
 		}
 
-		// [FIXME] selection文字列化再検討
 		// command時にはクリック箇所などの情報が失われるためコンテキストを保持しておく
 		context = update({}, cwin.gContextMenu, win.location, {
 			document  : doc,
